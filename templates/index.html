@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>لوحة تحكم الشات</title>
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; padding: 10px 20px; background-color: #fff; border-bottom: 1px solid #ddd;">
+    <h1 style="margin: 0; color: #2c3e50;">لوحة تحكم الشات</h1>
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+         <button onclick="exportUsersToExcel()" class="header-button-base header-button--color-users">
+          📊 تصدير المستخدمين
+         </button>
+         <button onclick="openModeratorModal()" class="header-button-base header-button--color-mods">
+            🛡️ حالة المشرفين
+         </button>
+         <!-- *** تعديل وظيفة الزر: لم يعد يمسح localStorage، بل ربما ينبه فقط *** -->
+         <button onclick="showClearWarning()" class="header-button-base header-button--color-clear" title="البيانات الآن مخزنة في قاعدة البيانات بشكل دائم. هذا الزر للعلم فقط.">
+           🗑️ مسح المحفوظات (معطل)
+         </button>
+    </div>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    /* ... (نفس أنماط CSS السابقة بدون تغيير) ... */
+
+    /* --- أنماط مشابهة لـ index.html --- */
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; background-color: #f0f2f5; color: #333; padding: 0; margin: 0; }
+    h1, h2 { text-align: center; color: #2c3e50; }
+    .container { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
+    label { display: block; text-align: center; margin-top: 20px; font-weight: bold; }
+
+    /* --- الشريط العلوي وأزراره --- */
+     div[style*="background-color: #fff"] { /* شريط العنوان */
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+     }
+    .header-button-base {
+        color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;
+        transition: background-color 0.2s ease, transform 0.1s ease; font-weight: 500;
+        display: inline-block; vertical-align: middle; text-align: center;
+    }
+    .header-button-base:active { transform: scale(0.98); }
+    .header-button--color-users { background-color: #2980b9; }
+    .header-button--color-users:hover { background-color: #1f618d; }
+    .header-button--color-mods { background-color: #8e44ad; }
+    .header-button--color-mods:hover { background-color: #732d91; }
+    /* تغيير لون زر المسح ليدل على أنه معطل أو مختلف */
+    .header-button--color-clear { background-color: #bdc3c7; cursor: not-allowed; }
+    .header-button--color-clear:hover { background-color: #95a5a6; }
+
+
+    /* --- الفلاتر --- */
+    .filters { display: flex; justify-content: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; padding: 10px; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .filters input, .filters button { padding: 8px 12px; border-radius: 5px; font-size: 1em; border: 1px solid #ccc; }
+    .filters input { min-width: 150px; }
+    #resetFilters { background-color: #e74c3c; color: white; border: none; }
+    #resetFilters:hover { background-color: #c0392b; }
+
+    /* --- الجداول --- */
+    .mini-table, .main-table { width: 100%; margin: 20px auto; background-color: #fff; border-collapse: collapse; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 10px; overflow: hidden; }
+    .mini-table th, .mini-table td, .main-table th, .main-table td { padding: 12px 10px; text-align: center; border-bottom: 1px solid #eee; }
+    .mini-table tr:last-child td, .main-table tr:last-child td { border-bottom: none; }
+    .mini-table th { background-color: #27ae60; color: white; font-weight: 600; }
+    .main-table th { background-color: #3498db; color: white; font-weight: 600; } /* للجدول داخل النوافذ */
+    td a { color: inherit; text-decoration: none; font-weight: bold; }
+    td a:hover { text-decoration: underline; color: #3498db; }
+    .timestamp { color: #7f8c8d; font-size: 0.85em; white-space: nowrap; }
+    #userStatsTable tbody tr:hover td { background-color: #f5f5f5; cursor: pointer; transition: background-color 0.15s ease-in-out; } /* تظليل صف المستخدم */
+    #userStatsTable tbody tr:hover td a:hover { text-decoration: none; }
+
+    /* --- مفتاح الحالة --- */
+    .status-hint { padding: 10px; background-color: #e9ecef; border-radius: 5px; border: 1px solid #dee2e6; margin-bottom: 15px; transition: background-color 0.3s, color 0.3s, border-color 0.3s; }
+    .status-hint strong { color: #343a40; }
+    .status-hint span { display: inline-block; margin: 5px 10px; }
+
+    /* --- أزرار التحكم في العرض --- */
+    .user-display-controls button { background-color: #3498db; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; margin: 0 5px; transition: background-color 0.2s ease; }
+    .user-display-controls button:hover { background-color: #2980b9; }
+    .user-display-controls button#decreaseUsersBtn { background-color: #e74c3c; }
+    .user-display-controls button#decreaseUsersBtn:hover { background-color: #c0392b; }
+    .user-display-controls button#toggleUsersBtn { background-color: #8e44ad; }
+    .user-display-controls button#toggleUsersBtn:hover { background-color: #732d91; }
+
+    /* --- زر رابط سجل الرسائل --- */
+    .show-log-btn {
+        display: inline-block; /* ليعمل الحشو بشكل صحيح */
+        padding: 10px 25px; font-size: 1em; background-color: #3498db; color: white;
+        border: none; border-radius: 5px; cursor: pointer; transition: background-color 0.2s ease;
+        text-decoration: none; /* إزالة خط الرابط */
+    }
+    .show-log-btn:hover { background-color: #2980b9; color: white; }
+
+    /* --- النوافذ المنبثقة --- */
+    #userMessagesModal, #moderatorModal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: hidden; background-color: rgba(0, 0, 0, 0.6); align-items: center; justify-content: center; }
+    .modal-content { background-color: #fefefe; margin: auto; padding: 25px; border: 1px solid #888; width: 90%; max-width: 1000px; max-height: 85vh; overflow-y: auto; border-radius: 10px; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+    .fixed-close { position: fixed; top: 20px; left: 20px; z-index: 1100; background-color: #e74c3c; color: white; border: none; border-radius: 50%; cursor: pointer; transition: background-color 0.2s ease, transform 0.1s ease; box-shadow: 0 2px 5px rgba(0,0,0,0.3); width: 40px; height: 40px; font-size: 1.4em; display: flex; align-items: center; justify-content: center; padding: 0; line-height: 1; }
+    .fixed-close:hover { background-color: #c0392b; }
+    .fixed-close:active { transform: scale(0.95); }
+
+    /* --- الوضع الليلي --- */
+    body.dark-mode { background-color: #1e272e; color: #ecf0f1; }
+    body.dark-mode h1, body.dark-mode h2 { color: #ecf0f1; }
+    body.dark-mode div[style*="background-color: #fff"] { background-color: #2c3e50 !important; border-bottom-color: #34495e; }
+    body.dark-mode div[style*="background-color: #fff"] h1 { color: #ecf0f1; }
+    body.dark-mode .filters { background-color: #2c3e50; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+    body.dark-mode .mini-table, body.dark-mode .main-table, body.dark-mode .modal-content { background-color: #2c3e50; color: #ecf0f1; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+    body.dark-mode th { background-color: #34495e !important; color: #ecf0f1; }
+    body.dark-mode td { border-bottom-color: #34495e; }
+    body.dark-mode tr:last-child td { border-bottom: none; }
+    body.dark-mode input, body.dark-mode .filters button { background-color: #34495e; color: #ecf0f1; border-color: #4a6378; }
+    body.dark-mode input::placeholder { color: #bdc3c7; }
+    body.dark-mode #resetFilters { background-color: #c0392b; color: white; border: none; }
+    body.dark-mode #resetFilters:hover { background-color: #e74c3c; }
+    body.dark-mode a { color: #5dade2; }
+    body.dark-mode a:hover { color: #85c1e9; }
+    body.dark-mode .timestamp { color: #95a5a6; }
+    body.dark-mode #userStatsTable tbody tr:hover td { background-color: #3a5064; }
+    body.dark-mode #userStatsTable tbody tr:hover td a:hover { text-decoration: none; }
+    body.dark-mode .status-hint { background-color: #34495e; border-color: #4a6378; color: #bdc3c7; }
+    body.dark-mode .status-hint strong { color: #ecf0f1; }
+    body.dark-mode .user-display-controls button { background-color: #5dade2; }
+    body.dark-mode .user-display-controls button:hover { background-color: #3498db; }
+    body.dark-mode .user-display-controls button#decreaseUsersBtn { background-color: #e74c3c; }
+    body.dark-mode .user-display-controls button#decreaseUsersBtn:hover { background-color: #c0392b; }
+    body.dark-mode .user-display-controls button#toggleUsersBtn { background-color: #9b59b6; }
+    body.dark-mode .user-display-controls button#toggleUsersBtn:hover { background-color: #8e44ad; }
+    body.dark-mode .show-log-btn { background-color: #5dade2; color: white; }
+    body.dark-mode .show-log-btn:hover { background-color: #3498db; color: white;}
+    body.dark-mode .header-button--color-users { background-color: #3498db; }
+    body.dark-mode .header-button--color-users:hover { background-color: #2980b9; }
+    body.dark-mode .header-button--color-mods { background-color: #9b59b6; }
+    body.dark-mode .header-button--color-mods:hover { background-color: #8e44ad; }
+    /* تغيير لون زر المسح المعطل في الوضع الليلي */
+    body.dark-mode .header-button--color-clear { background-color: #7f8c8d; cursor: not-allowed; }
+    body.dark-mode .header-button--color-clear:hover { background-color: #95a5a6;}
+    #darkModeToggle { transition: background-color 0.2s ease, color 0.2s ease; }
+    body.dark-mode #darkModeToggle { background-color: #f1c40f; color: #333; }
+    body.dark-mode #darkModeToggle:hover { background-color: #f39c12; }
+
+     /* تنسيق خلية التاريخ اليدوي - القابلة للتعديل */
+    .manual-date-cell.editable {
+        background-color: #fffacd; /* أصفر فاتح */
+        cursor: text;
+        outline: none;
+        border: 1px dashed #ccc;
+    }
+    .manual-date-cell.editable:focus {
+        background-color: #ffffff;
+        border: 1px solid #aaa;
+        box-shadow: 0 0 3px rgba(0,0,0,0.2);
+    }
+
+    /* تنسيق خلية التاريخ اليدوي - غير القابلة للتعديل */
+    .manual-date-cell.not-editable {
+        background-color: #f8f9fa; /* رمادي فاتح جدًا */
+        color: #555;
+        cursor: default; /* المؤشر العادي */
+        font-style: italic; /* جعلها مائلة قليلاً (اختياري) */
+    }
+
+    /* الوضع الليلي */
+    body.dark-mode .manual-date-cell.editable {
+        background-color: #5a5a35;
+        color: #eee;
+        border-color: #666;
+    }
+    body.dark-mode .manual-date-cell.editable:focus {
+        background-color: #444;
+        border-color: #888;
+        box-shadow: 0 0 3px rgba(255,255,255,0.1);
+    }
+    body.dark-mode .manual-date-cell.not-editable {
+        background-color: #3a4b5b; /* أزرق رمادي أغمق */
+        color: #bdc3c7;
+        font-style: italic;
+    }
+        /* ... (بقية CSS) ... */
+
+    /* تنسيق خلية التاريخ اليدوي */
+        /* ... (بقية CSS) ... */
+
+    /* تعديل لأنماط خلية التاريخ اليدوي */
+    .manual-date-cell {
+        position: relative; /* للسماح بتموضع العناصر الداخلية بشكل مطلق */
+        min-width: 170px;
+        padding: 10px 8px !important; /* تعديل الحشو ليلائم الأيقونة */
+    }
+    .manual-date-cell .date-display { /* النص العادي للتاريخ */
+        display: inline-block; /* للسماح بمحاذاة مع الزر */
+        min-width: 100px; /* مساحة لعرض التاريخ */
+        text-align: center; /* أو right إذا أردت */
+         font-style: italic; /* تمييز التاريخ قليلاً */
+         color: #555;
+    }
+    .manual-date-cell .date-input { /* حقل إدخال التاريخ */
+        display: none; /* مخفي افتراضيًا */
+        width: calc(100% - 35px); /* يأخذ العرض المتاح بجانب الزر */
+        box-sizing: border-box;
+        padding: 4px 6px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+    }
+     /* عند إظهار حقل الإدخال، نخفي النص */
+    .manual-date-cell.editing .date-display { display: none; }
+    .manual-date-cell.editing .date-input { display: inline-block; }
+
+    .edit-date-btn { /* زر/أيقونة التعديل */
+        background: none;
+        border: none;
+        color: #888;
+        cursor: pointer;
+        font-size: 0.9em;
+        padding: 0 5px;
+        margin-right: 5px; /* مسافة بين الأيقونة والنص/الحقل */
+        vertical-align: middle; /* محاذاة رأسية */
+        display: inline-block; /* افتراضيًا ظاهر بجانب التاريخ */
+    }
+     .edit-date-btn:hover { color: #333; }
+     /* نخفي زر التعديل عند التعديل الفعلي */
+     .manual-date-cell.editing .edit-date-btn { display: none; }
+
+     /* جعل الخلية غير القابلة للتعديل تبدو مختلفة */
+     .manual-date-cell.not-editable .edit-date-btn { display: none; } /* إخفاء زر التعديل */
+     .manual-date-cell.not-editable .date-display { font-style: normal; color: #555; } /* إزالة الإمالة */
+
+
+    /* الوضع الليلي */
+    body.dark-mode .manual-date-cell .date-display { color: #bdc3c7; }
+    body.dark-mode .manual-date-cell .date-input { background-color: #34495e; color: #ecf0f1; border-color: #4a6378; }
+    body.dark-mode .edit-date-btn { color: #aaa; }
+    body.dark-mode .edit-date-btn:hover { color: #eee; }
+     body.dark-mode .manual-date-cell.not-editable .date-display { color: #bdc3c7; font-style: normal;}
+
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div style="text-align: left; padding: 10px 0;">
+      <button onclick="toggleDarkMode()" id="darkModeToggle" style="padding: 8px 16px; background-color: #444; color: #fff; border: none; border-radius: 5px; cursor: pointer;">
+        🌙 تفعيل الوضع الليلي
+      </button>
+    </div>
+
+    <label for="userSearch">🔍 فلاتر البحث الرئيسية</label>
+    <div class="filters">
+      <input type="text" id="userSearch" placeholder="اسم المستخدم" aria-label="بحث باسم المستخدم"/>
+      <input type="time" id="fromTime" aria-label="من وقت"/>
+      <input type="time" id="toTime" aria-label="إلى وقت"/>
+      <button id="resetFilters">🧹 إعادة ضبط</button>
+    </div>
+
+    <table class="mini-table" id="userStatsTable">
+      <thead>
+        <tr>
+          <!-- *** سنحتاج لتحديث هذا العنوان من JavaScript بعد جلب البيانات *** -->
+          <th colspan="7" id="userCountHeader" style="background-color: #2ecc71;">
+            عدد المستخدمين (جاري التحميل...)
+          </th>
+        </tr>
+        <tr>
+          <th>#</th>
+          <th>👤 المستخدم</th>
+          <th>💬 الرسائل</th>
+          <th>⏱️ مدة التواجد</th>
+          <th>🕐 أول ظهور</th>
+          <th>🕓 آخر ظهور</th>
+          <th>🔄 الحالة</th>
+        </tr>
+      </thead>
+      <!-- *** سيتم ملء هذا الجسم بواسطة JavaScript بعد جلب البيانات *** -->
+      <tbody id="userStatsTableBody">
+          <tr><td colspan="7">جاري تحميل بيانات المستخدمين...</td></tr>
+      </tbody>
+    </table>
+
+    <div class="status-hint" style="text-align: center; margin-top: 15px; font-size: 0.9em; color: #555;">
+        <p style="margin: 5px 0;"><strong>💡 مفتاح الحالة:</strong></p>
+        <span style="margin: 0 10px;">🟢 متواجد الآن (آخر رسالة منذ أقل من دقيقتين)</span>
+        <span style="margin: 0 10px;">🟡 تواجد منذ قليل (آخر رسالة منذ 2-5 دقائق)</span>
+        <span style="margin: 0 10px;">🔴 غير متواجد (آخر رسالة منذ أكثر من 5 دقائق)</span>
+    </div>
+
+    <div style="text-align:center; margin-top: 15px; margin-bottom: 20px;" class="user-display-controls">
+      <button onclick="increaseUsers()">
+        ➕ عرض 10 إضافيين
+      </button>
+      <button id="decreaseUsersBtn" onclick="decreaseUsers()" style="display: none;">
+        ➖ إخفاء 10
+      </button>
+      <button onclick="toggleUsers()" id="toggleUsersBtn">
+        👥 عرض كل المستخدمين
+      </button>
+    </div>
+
+
+    <div style="text-align:center; margin-top: 20px; margin-bottom: 20px;">
+      <a href="/log" class="show-log-btn">
+        📜 عرض سجل الرسائل
+      </a>
+    </div>
+  </div>
+
+  <!-- نافذة رسائل المستخدم (لم تتغير كثيرًا، لكنها ستعتمد على allMessages المجلوبة) -->
+  <div id="userMessagesModal">
+    <div class="modal-content">
+      <button onclick="closeUserModal()" class="fixed-close" aria-label="إغلاق">✖</button>
+      <h2 id="userMessagesTitle" style="text-align:center; margin-top: 0; margin-bottom: 15px;">رسائل المستخدم</h2>
+      <div class="filters" style="background: none; box-shadow: none; padding: 5px 0;">
+        <input type="text" id="userSearchText" placeholder="🔎 ابحث في رسائل المستخدم..." aria-label="بحث في الرسائل"/>
+        <input type="time" id="userFromTime" aria-label="من وقت"/>
+        <input type="time" id="userToTime" aria-label="إلى وقت"/>
+      </div>
+      <table class="main-table" style="margin-top: 15px;">
+        <thead>
+          <tr>
+            <th>وقت النظام</th>
+            <th>وقت الرسالة</th>
+            <th>المحتوى</th>
+          </tr>
+        </thead>
+        <tbody id="userMessagesTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- نافذة حالة المشرفين (لم تتغير كثيرًا، ستعتمد على allMessages المجلوبة) -->
+  <div id="moderatorModal">
+    <div class="modal-content">
+        <button onclick="closeModeratorModal()" class="fixed-close" aria-label="إغلاق">✖</button>
+        <h2 style="text-align:center; margin-top: 0; margin-bottom: 20px;">🛡️ حالة المشرفين</h2>
+        <table class="main-table" id="moderatorStatusTable">
+            <thead>
+                <tr>
+                    <th>👤 المشرف</th>
+                    <th>💬 الرسائل</th>
+                    <th>⏱️ مدة التواجد</th>
+                    <th>🕐 أول ظهور</th>
+                    <th>🕓 آخر ظهور</th>
+                    <th>🔄 الحالة</th>
+                    <th>🗓️ آخر تواجد (يدوي)</th>
+                </tr>
+            </thead>
+            <tbody id="moderator_status_table"></tbody>
+        </table>
+        <!-- ملاحظات التعديل اليدوي (كما هي) -->
+        <p style="text-align: center; font-size: 0.85em; color: #888; margin-top: 15px;">
+            ملاحظة: يمكنك النقر على تاريخ "آخر تواجد (يدوي)" لتعديله. سيتم حفظ التغيير في متصفحك (localStorage).
+        </p>
+        <p style="text-align: center; font-size: 0.85em; color: #e74c3c; margin-top: 5px;">
+             تنبيه: سيتم فقدان التواريخ اليدوية عند مسح محفوظات المتصفح أو استخدام زر "مسح المحفوظات" (إذا كان يقوم بذلك).
+        </p>
+        <!-- *** ملاحظة: التواريخ اليدوية للمشرفين لا تزال تستخدم localStorage حسب الكود الحالي. إذا أردت تغييرها لتُحفظ في قاعدة بيانات منفصلة، سيتطلب ذلك تعديلات إضافية في app.py و JavaScript. *** -->
+    </div>
+</div>
+
+
+  <!-- *** بداية وسم السكربت الواحد (معدل بشكل كبير) *** -->
+  <script>
+    // --- المتغيرات العامة ---
+    let allMessages = []; // سيتم ملء هذا المتغير من السيرفر عند التحميل وعند التحديث
+    let showAll = false;
+    let currentUserForMessages = null;
+    let visibleUserCount = 10;
+    let openedFromModeratorModal = false;
+    const botNames = ['mrbeefbot', 'nightbot', 'streamelements'];
+    // *** لا نحتاج مفتاح localStorage للرسائل بعد الآن ***
+    // const STORAGE_KEY = 'kickChatMessages_hexawi';
+
+    // مفتاح localStorage لتواريخ المشرفين اليدوية (يبقى كما هو حاليًا)
+    const MOD_MANUAL_DATE_STORAGE_KEY = 'kickModManualDates_hexawi';
+    const moderators = [
+        'Dr_Bro', 'AlkhaaL_YouseF', 'AbderrezakSadi', 'CO_SNFORA',
+        'co_nada', 'CO_Asalah', 'CoHager'
+    ];
+
+    // --- دوال localStorage (فقط لتواريخ المشرفين اليدوية) ---
+    function saveManualModDates(manualDates) {
+        try {
+            localStorage.setItem(MOD_MANUAL_DATE_STORAGE_KEY, JSON.stringify(manualDates));
+            console.log(`💾 تم حفظ تواريخ المشرفين اليدوية.`);
+        } catch (e) {
+            console.error("❌ خطأ في حفظ تواريخ المشرفين اليدوية:", e);
+        }
+    }
+
+    function loadManualModDates() {
+        try {
+            const storedDates = localStorage.getItem(MOD_MANUAL_DATE_STORAGE_KEY);
+            return storedDates ? JSON.parse(storedDates) || {} : {};
+        } catch (e) {
+            console.error("❌ خطأ في تحميل تواريخ المشرفين اليدوية:", e);
+        }
+        return {};
+    }
+    // --- *** تم حذف دوال save/load/clear الخاصة برسائل الشات من localStorage *** ---
+
+    // --- دوال إزالة التكرار والمعرف الفريد (تبقى كما هي، مفيدة للمعالجة) ---
+    function getMessageUniqueId(msg) {
+        if (!msg || typeof msg !== 'object' || msg.length < 4) return null;
+        const systemTime = msg[0] || ''; const userName = msg[2] || 'unknown';
+        const textPart = (msg[3] || '').substring(0, 50);
+        return `${systemTime}_${userName}_${textPart}`;
+    }
+
+    function deduplicateMessages(messages) { // قد لا نحتاجها كثيرًا الآن إذا كان السيرفر يضمن عدم التكرار
+        if(!Array.isArray(messages)) return [];
+        const uniqueMessages = new Map();
+        messages.forEach(msg => { const id = getMessageUniqueId(msg); if (id) { uniqueMessages.set(id, msg); } });
+        return Array.from(uniqueMessages.values());
+    }
+
+    // --- دوال مساعدة أخرى (تبقى كما هي) ---
+    function getSystemTimeOnly(dateTimeStr) { /* ... نفس الكود ... */
+         if (!dateTimeStr) return "--:--"; try { const date = new Date(dateTimeStr); if (isNaN(date.getTime())) return "--:--"; const hours = String(date.getHours()).padStart(2, '0'); const minutes = String(date.getMinutes()).padStart(2, '0'); return `${hours}:${minutes}`; } catch (e) { return "--:--"; }
+    }
+    function exportUsersToExcel() { /* ... نفس الكود ... */
+        const table = document.querySelector("#userStatsTable"); if(!table) return; const tableToExport = document.createElement('table'); const header = table.querySelector('thead')?.cloneNode(true); const body = table.querySelector('tbody') ? table.querySelector('tbody').cloneNode(true) : document.createElement('tbody'); if(!header || !body) return; tableToExport.appendChild(header); tableToExport.appendChild(body); const userLinks = tableToExport.querySelectorAll('tbody td a'); userLinks.forEach(link => { const parentTd = link.parentNode; if(parentTd) { parentTd.textContent = link.textContent; } }); const wb = XLSX.utils.table_to_book(tableToExport, { sheet: "UserStats" }); XLSX.writeFile(wb, "user_stats.xlsx");
+    }
+    function filterByTime(msg, from, to) { /* ... نفس الكود ... */
+        if (!from && !to) return true; const msgTime = getSystemTimeOnly(msg[0]); if (msgTime === "--:--") return true; if (from && msgTime < from) return false; if (to && msgTime > to) return false; return true;
+    }
+    const calcEffectiveDuration = (times) => { /* ... نفس الكود ... */
+        if (!times || times.length === 0) return 0; times.sort((a, b) => a - b); let totalDurationMs = 0; if (times.length === 1) return 0; let sessionStart = times[0]; let lastMessageTime = times[0]; for (let i = 1; i < times.length; i++) { const currentTime = times[i]; const diffMinutes = (currentTime - lastMessageTime) / 60000; if (diffMinutes <= 5) { lastMessageTime = currentTime; } else { totalDurationMs += (lastMessageTime - sessionStart); sessionStart = currentTime; lastMessageTime = currentTime; } } totalDurationMs += (lastMessageTime - sessionStart); return totalDurationMs / 1000;
+    };
+
+    // --- دوال العرض (Rendering) ---
+    // ستعتمد هذه الدوال الآن على المتغير العام `allMessages` الذي يتم تحديثه من السيرفر
+
+    function updateUserStats() {
+        // *** يتم استدعاء هذه الوظيفة بعد جلب البيانات بنجاح في fetchInitialData أو fetchNewMessages ***
+        const statsTableBody = document.getElementById("userStatsTableBody"); // استهداف الجسم الجديد
+        const userCountHeader = document.getElementById("userCountHeader");
+        if (!statsTableBody || !userCountHeader) return;
+
+        statsTableBody.innerHTML = ""; // مسح الجدول قبل إعادة البناء
+        userCountHeader.textContent = "جاري حساب الإحصائيات..."; // رسالة مؤقتة
+
+        // الفلاتر تعمل على `allMessages` المجلوبة
+        const nameFilter = document.getElementById("userSearch").value.toLowerCase();
+        const fromTime = document.getElementById("fromTime").value;
+        const toTime = document.getElementById("toTime").value;
+
+        // فلترة الرسائل الموجودة في الذاكرة
+        const filteredMessagesForStats = allMessages.filter(msg =>
+            (msg && msg[2] && msg[2].toLowerCase().includes(nameFilter)) &&
+            filterByTime(msg, fromTime, toTime) &&
+            (msg[0] !== undefined && msg[0] !== null)
+        );
+
+        // حساب الإحصائيات (نفس المنطق السابق)
+        const timestamps = {}; const counts = {};
+        filteredMessagesForStats.forEach(msg => {
+            const user = msg[2]; if (!msg[0]) return; try { const time = new Date(msg[0]); if (isNaN(time.getTime())) return; counts[user] = (counts[user] || 0) + 1; if (!timestamps[user]) timestamps[user] = []; timestamps[user].push(time); } catch (e) { console.error("Error processing message date for stats:", msg[0], e); }
+        });
+
+        const totalUserCount = Object.keys(counts).length;
+        userCountHeader.textContent = `عدد المستخدمين (المطابقين للفلتر): ${totalUserCount}`;
+        let sortedUsers = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+        const usersToDisplay = showAll ? sortedUsers : sortedUsers.slice(0, visibleUserCount);
+
+        if (usersToDisplay.length === 0) {
+            statsTableBody.innerHTML = '<tr><td colspan="7">لا يوجد مستخدمون يطابقون البحث.</td></tr>';
+        } else {
+            let index = 1;
+            usersToDisplay.forEach(([user, count]) => {
+                const userTimes = timestamps[user] || []; if (userTimes.length === 0) return;
+                const totalSec = calcEffectiveDuration(userTimes); const durMinutes = Math.floor(totalSec / 60); const durSeconds = Math.floor(totalSec % 60); const firstTimeStr = userTimes[0].toLocaleTimeString('en-US'); const lastTimeObj = userTimes[userTimes.length - 1]; const lastTimeStr = lastTimeObj.toLocaleTimeString('en-US'); const now = new Date(); const sinceLastMs = now - lastTimeObj; const sinceLastTotalSeconds = Math.floor(sinceLastMs / 1000); const sinceMinutes = Math.floor(sinceLastTotalSeconds / 60); const sinceSeconds = sinceLastTotalSeconds % 60; let statusStr = ""; if (sinceMinutes < 2) { statusStr = "🟢 متواجد الآن"; } else if (sinceMinutes < 5) { statusStr = "🟡 تواجد منذ قليل"; } else { statusStr = `🔴 غير متواجد (${sinceMinutes} دقيقة ${sinceSeconds} ثانية)`; }
+                const row = document.createElement("tr");
+                row.innerHTML = `<td>${index++}</td><td><a href="#" onclick="openUserMessages('${user.replace(/'/g, "\\'")}')">${user}</a></td><td>${count}</td><td>${durMinutes} دقيقة ${durSeconds} ثانية</td><td>${firstTimeStr}</td><td>${lastTimeStr}</td><td>${statusStr}</td>`;
+                statsTableBody.appendChild(row);
+            });
+        }
+
+        // تحديث أزرار التحكم بالعرض (نفس المنطق)
+        const decreaseBtn = document.getElementById("decreaseUsersBtn"); if (decreaseBtn) { decreaseBtn.style.display = (!showAll && visibleUserCount > 10) ? "inline-block" : "none"; }
+        const toggleBtn = document.getElementById("toggleUsersBtn"); if (toggleBtn) { toggleBtn.textContent = showAll ? `🔙 عرض أول ${visibleUserCount}` : "👥 عرض كل المستخدمين"; }
+    }
+
+    function renderUserMessages(username) {
+        // تعتمد على `allMessages` المحدثة
+        const tableBody = document.getElementById("userMessagesTable"); if (!tableBody) return;
+        tableBody.innerHTML = ""; // مسح المحتوى القديم
+        const searchText = document.getElementById("userSearchText")?.value?.toLowerCase() || "";
+        const fromTime = document.getElementById("userFromTime")?.value || "";
+        const toTime = document.getElementById("userToTime")?.value || "";
+
+        // فلترة الرسائل من `allMessages`
+        const userSpecificMessages = allMessages.filter(msg =>
+            msg && msg[2] === username &&
+            filterByTime(msg, fromTime, toTime) &&
+            (msg[3] && msg[3].toLowerCase().includes(searchText))
+        );
+
+        if (userSpecificMessages.length === 0) {
+             tableBody.innerHTML = '<tr><td colspan="3">لا توجد رسائل تطابق البحث لهذا المستخدم.</td></tr>';
+        } else {
+            userSpecificMessages.slice().reverse().forEach(msg => {
+                const row = document.createElement("tr");
+                row.innerHTML = `<td class="timestamp">${msg[0] || ''}</td><td class="timestamp">${msg[1] || '--:--'}</td><td class="message">${msg[3] || ''}</td>`;
+                tableBody.appendChild(row);
+            });
+        }
+    }
+
+    function renderModeratorStatus() {
+        // تعتمد على `allMessages` المحدثة
+        const modTableBody = document.getElementById("moderator_status_table"); if (!modTableBody) return;
+        modTableBody.innerHTML = ""; // مسح الجدول
+
+        const manualModDates = loadManualModDates(); // تحميل التواريخ اليدوية (لا تزال من localStorage)
+
+        // حساب إحصائيات المشرفين من `allMessages` (نفس المنطق السابق)
+        const moderatorMessages = allMessages.filter(msg => msg && msg[2] && moderators.some(mod => mod.toLowerCase() === msg[2].toLowerCase()) && msg[0]);
+        const timestamps = {}; const counts = {};
+        moderatorMessages.forEach(msg => { const user = msg[2]; if (!msg[0]) return; try { const time = new Date(msg[0]); if (isNaN(time.getTime())) return; const officialModName = moderators.find(mod => mod.toLowerCase() === user.toLowerCase()) || user; counts[officialModName] = (counts[officialModName] || 0) + 1; if (!timestamps[officialModName]) timestamps[officialModName] = []; timestamps[officialModName].push(time); } catch (e) { console.error("Error processing mod date:", msg[0], e); } });
+
+        if (moderators.length === 0) {
+             modTableBody.innerHTML = '<tr><td colspan="7">لم يتم تحديد قائمة المشرفين.</td></tr>';
+             return;
+        }
+
+        let modRowsHtml = '';
+        moderators.forEach(modName => {
+            const modCount = counts[modName] || 0; const modTimes = timestamps[modName] || []; let firstTimeStr = "--:--"; let lastTimeStr = "--:--"; let statusStr = "❓ لم يظهر"; let totalSec = 0; let lastMessageDateStr = ""; let isModActiveOrRecent = false;
+            if (modTimes.length > 0) { modTimes.sort((a, b) => a - b); totalSec = calcEffectiveDuration(modTimes); firstTimeStr = modTimes[0].toLocaleTimeString('en-US'); const lastTimeObj = modTimes[modTimes.length - 1]; lastTimeStr = lastTimeObj.toLocaleTimeString('en-US'); lastMessageDateStr = lastTimeObj.toISOString().slice(0, 10); const now = new Date(); const sinceLastMs = now - lastTimeObj; const sinceLastTotalSeconds = Math.floor(sinceLastMs / 1000); const sinceMinutes = Math.floor(sinceLastTotalSeconds / 60); const sinceSeconds = sinceLastTotalSeconds % 60; if (sinceMinutes < 2) { statusStr = "🟢 متواجد الآن"; isModActiveOrRecent = true; } else if (sinceMinutes < 5) { statusStr = "🟡 تواجد منذ قليل"; isModActiveOrRecent = true; } else { statusStr = `🔴 غير متواجد (${sinceMinutes} دقيقة ${sinceSeconds} ثانية)`; isModActiveOrRecent = false; } } else { isModActiveOrRecent = false; }
+            const durMinutes = Math.floor(totalSec / 60); const durSeconds = Math.floor(totalSec % 60);
+
+            let cellContent = ""; let canEdit = false;
+            if (isModActiveOrRecent || statusStr.startsWith('🔴')) { cellContent = lastMessageDateStr || "N/A"; canEdit = false; } else { cellContent = manualModDates[modName] || "لا يوجد"; canEdit = true; }
+
+            modRowsHtml += `
+              <tr data-modname="${modName}">
+                <td><a href="#" onclick="openUserMessages('${modName.replace(/'/g, "\\'")}', true)">${modName}</a></td>
+                <td>${modCount}</td>
+                <td>${durMinutes} دقيقة ${durSeconds} ثانية</td>
+                <td>${firstTimeStr}</td>
+                <td>${lastTimeStr}</td>
+                <td>${statusStr}</td>
+                <td class="manual-date-cell ${canEdit ? '' : 'not-editable'}">
+                  <span class="date-display">${cellContent}</span>
+                  ${canEdit ? `<input type="date" class="date-input" value="${manualModDates[modName] || ''}"><button class="edit-date-btn" onclick="toggleDateEdit(this)" title="تعديل التاريخ">✏️</button>` : ''}
+                </td>
+              </tr>`;
+        });
+        modTableBody.innerHTML = modRowsHtml;
+
+        // إضافة مستمعات الأحداث لتعديل التاريخ (تبقى كما هي)
+        modTableBody.removeEventListener('change', handleDateInputChange); // إزالة القديم أولاً
+        modTableBody.removeEventListener('blur', handleDateInputBlur, true);
+        modTableBody.removeEventListener('keydown', handleDateInputKeydown);
+        modTableBody.addEventListener('change', handleDateInputChange);
+        modTableBody.addEventListener('blur', handleDateInputBlur, true);
+        modTableBody.addEventListener('keydown', handleDateInputKeydown);
+    }
+
+     // --- دوال تعديل التاريخ اليدوي (تبقى كما هي) ---
+    function toggleDateEdit(buttonElement) { /* ... نفس الكود ... */
+        const cell = buttonElement.closest('.manual-date-cell'); if (cell) { cell.classList.add('editing'); const input = cell.querySelector('.date-input'); if (input) { input.focus(); } }
+    }
+    function saveManualDate(inputElement) { /* ... نفس الكود ... */
+        const cell = inputElement.closest('.manual-date-cell'); if (!cell) return; const modNameToSave = cell.closest('tr')?.dataset.modname; const newDate = inputElement.value.trim(); if (!modNameToSave) return; const manualModDates = loadManualModDates(); if (newDate === "") { delete manualModDates[modNameToSave]; cell.querySelector('.date-display').textContent = "لا يوجد"; console.log(`Manual date for ${modNameToSave} cleared.`); } else { manualModDates[modNameToSave] = newDate; cell.querySelector('.date-display').textContent = newDate; console.log(`Manual date for ${modNameToSave} updated to ${newDate}`); } saveManualModDates(manualModDates); cell.classList.remove('editing');
+    }
+    function handleDateInputChange(event) { if (event.target.classList.contains('date-input')) { saveManualDate(event.target); } }
+    function handleDateInputBlur(event) { if (event.target.classList.contains('date-input')) { const cell = event.target.closest('.manual-date-cell'); if (!cell || !event.relatedTarget || !cell.contains(event.relatedTarget)) { saveManualDate(event.target); } } }
+    function handleDateInputKeydown(event) { if (event.target.classList.contains('date-input') && event.key === 'Enter') { event.preventDefault(); saveManualDate(event.target); } else if (event.target.classList.contains('date-input') && event.key === 'Escape') { const cell = event.target.closest('.manual-date-cell'); if(cell) cell.classList.remove('editing'); } }
+    // -------------------------------------------------
+
+    // --- دوال التحكم والنوافذ (تبقى كما هي في الغالب) ---
+    function increaseUsers() { visibleUserCount += 10; showAll = false; updateUserStats(); }
+    function decreaseUsers() { visibleUserCount = Math.max(10, visibleUserCount - 10); showAll = false; updateUserStats(); }
+    function toggleUsers() { showAll = !showAll; updateUserStats(); }
+
+    function openUserMessages(username, fromModeratorModal = false) { /* ... نفس الكود ... */
+        openedFromModeratorModal = fromModeratorModal; closeModeratorModal(); currentUserForMessages = username; const m = document.getElementById("userMessagesModal"); if (!m) return; m.style.display = "flex"; const t = document.getElementById("userMessagesTitle"); if (t) t.textContent = `📨 رسائل: ${username}`; const us = document.getElementById("userSearchText"); if (us) us.value = ""; const uf = document.getElementById("userFromTime"); if (uf) uf.value = ""; const ut = document.getElementById("userToTime"); if (ut) ut.value = ""; renderUserMessages(username); document.body.style.overflow = 'hidden';
+    }
+    function closeUserModal() { /* ... نفس الكود ... */
+        const modal = document.getElementById("userMessagesModal"); if (modal) { modal.style.display = "none"; currentUserForMessages = null; if (openedFromModeratorModal) { openModeratorModal(); openedFromModeratorModal = false; } else { document.body.style.overflow = 'auto'; } }
+    }
+    function openModeratorModal() { /* ... نفس الكود ... */
+        const modal = document.getElementById("moderatorModal"); if (modal) { modal.style.display = "flex"; renderModeratorStatus(); document.body.style.overflow = 'hidden'; }
+    }
+    function closeModeratorModal() { /* ... نفس الكود ... */
+         const modal = document.getElementById("moderatorModal"); if (modal) { modal.style.display = "none"; if (!document.getElementById("userMessagesModal") || document.getElementById("userMessagesModal").style.display === 'none') { document.body.style.overflow = 'auto'; } }
+    }
+
+    // --- جلب الرسائل وتحديث الواجهة (تغيير كبير) ---
+
+    // وظيفة لجلب كل الرسائل عند تحميل الصفحة
+    function fetchInitialData() {
+        console.log("🔄 Fetching initial data for dashboard...");
+        fetch('/get_all_messages') // نستخدم نفس نقطة النهاية لصفحة السجل
+            .then(res => {
+                if (!res.ok) { throw new Error(`HTTP error! status: ${res.status}`); }
+                return res.json();
+            })
+            .then(initialMessages => {
+                if (Array.isArray(initialMessages)) {
+                    allMessages = initialMessages; // نملأ المتغير العام بالبيانات الأولية
+                    console.log(`✅ Loaded ${allMessages.length} initial messages.`);
+                    updateUserStats(); // نعيد رسم جدول الإحصائيات بناءً على البيانات المجلوبة
+                    // يمكن تحديث أي عناصر أخرى تعتمد على البيانات الأولية هنا
+                } else {
+                    console.error("❌ Initial data received is not an array:", initialMessages);
+                    allMessages = []; // نبدأ بقائمة فارغة في حالة الخطأ
+                    updateUserStats(); // نعرض الجدول فارغًا أو برسالة خطأ
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error fetching initial messages:', error);
+                // عرض خطأ للمستخدم في الجدول
+                const statsTableBody = document.getElementById("userStatsTableBody");
+                const userCountHeader = document.getElementById("userCountHeader");
+                if(statsTableBody) statsTableBody.innerHTML = '<tr><td colspan="7">خطأ في تحميل البيانات الأولية. حاول تحديث الصفحة.</td></tr>';
+                if(userCountHeader) userCountHeader.textContent = "خطأ في التحميل";
+                allMessages = [];
+            })
+            .finally(() => {
+                // بعد التحميل الأولي، نبدأ الجلب الدوري للرسائل الجديدة
+                console.log("🚀 Starting periodic fetching for new messages...");
+                setInterval(fetchNewMessages, 3500); // نفس الفاصل الزمني السابق
+            });
+    }
+
+    // وظيفة لجلب الرسائل الجديدة فقط بشكل دوري
+    function fetchNewMessages() {
+        // لا نحتاج لمعرفة آخر رسالة تم إرسالها هنا، السيرفر هو المسؤول عن ذلك
+        fetch('/get_new_messages')
+            .then(res => { if (!res.ok) { throw new Error(`HTTP error! status: ${res.status}`); } return res.json(); })
+            .then(newMessages => {
+                if (newMessages && Array.isArray(newMessages) && newMessages.length > 0) {
+                    console.log(`➕ Received ${newMessages.length} new messages.`);
+                    // نضيف الرسائل الجديدة إلى نهاية القائمة الحالية
+                    allMessages = allMessages.concat(newMessages);
+                    // *** لا نحتاج لحفظها في localStorage ***
+
+                    // نعيد حساب الإحصائيات وتحديث الواجهة
+                    updateUserStats();
+
+                    // تحديث نافذة المشرفين إذا كانت مفتوحة
+                    if (document.getElementById("moderatorModal")?.style.display === "flex") {
+                        renderModeratorStatus();
+                    }
+                    // تحديث نافذة رسائل المستخدم إذا كانت مفتوحة وكانت لنفس المستخدم
+                    if (currentUserForMessages && document.getElementById("userMessagesModal")?.style.display === "flex") {
+                         // لا حاجة للتحقق من messagesAdded، فقط نحدث بالبيانات الجديدة
+                         renderUserMessages(currentUserForMessages);
+                    }
+                } else {
+                     console.log("🕒 No new messages received.");
+                 }
+            })
+            .catch(error => {
+                console.error('❌ Error fetching new messages:', error);
+                // يمكن عرض مؤشر خطأ بسيط أو تجاهله مؤقتًا
+            });
+    }
+
+    // --- عند تحميل الصفحة ---
+    window.onload = function() {
+        // *** لا نقوم بتحميل الرسائل من localStorage ***
+        // loadMessagesFromLocalStorage(); // <-- تم الحذف
+
+        // تطبيق الوضع الليلي (كما هو)
+        if (localStorage.getItem("darkMode") === "yes") {
+            document.body.classList.add("dark-mode");
+            const toggle = document.getElementById("darkModeToggle");
+            if(toggle) toggle.textContent = "☀️ Light Mode";
+        }
+
+        // *** نبدأ بجلب البيانات الأولية من السيرفر ***
+        fetchInitialData(); // <-- استدعاء الوظيفة الجديدة
+
+        // ربط الأحداث بالفلاتر الرئيسية (عند تغيير الفلتر، نعيد تطبيق الفلترة على allMessages ونحدث الواجهة)
+        const userSearchInput = document.getElementById("userSearch");
+        const fromTimeInput = document.getElementById("fromTime");
+        const toTimeInput = document.getElementById("toTime");
+        const resetBtn = document.getElementById("resetFilters");
+        const handleMainFilterChange = () => {
+            updateUserStats(); // نعيد حساب وعرض الإحصائيات بناءً على الفلاتر الجديدة
+        };
+        if(userSearchInput) userSearchInput.addEventListener("input", handleMainFilterChange);
+        if(fromTimeInput) fromTimeInput.addEventListener("input", handleMainFilterChange);
+        if(toTimeInput) toTimeInput.addEventListener("input", handleMainFilterChange);
+        if(resetBtn) resetBtn.addEventListener("click", () => {
+            if(userSearchInput) userSearchInput.value = "";
+            if(fromTimeInput) fromTimeInput.value = "";
+            if(toTimeInput) toTimeInput.value = "";
+            handleMainFilterChange();
+        });
+
+        // ربط الأحداث بفلاتر نافذة رسائل المستخدم (تعمل على allMessages)
+        const userSearchTextInput = document.getElementById("userSearchText");
+        const userFromTimeInput = document.getElementById("userFromTime");
+        const userToTimeInput = document.getElementById("userToTime");
+        const updateUserMessagesFilterHandler = () => {
+             if (currentUserForMessages && document.getElementById("userMessagesModal")?.style.display === "flex") {
+                 renderUserMessages(currentUserForMessages);
+             }
+        };
+        if (userSearchTextInput) userSearchTextInput.addEventListener("input", updateUserMessagesFilterHandler);
+        if (userFromTimeInput) userFromTimeInput.addEventListener("input", updateUserMessagesFilterHandler);
+        if (userToTimeInput) userToTimeInput.addEventListener("input", updateUserMessagesFilterHandler);
+
+        // *** تم نقل بدء الجلب الدوري ليكون بعد انتهاء التحميل الأولي في fetchInitialData ***
+        // console.log("🚀 Starting periodic message fetching for main page...");
+        // setInterval(fetchNewMessages, 3500); // <-- تم النقل
+    };
+
+    // --- وظيفة تبديل الوضع الليلي (تبقى كما هي) ---
+    function toggleDarkMode() { /* ... نفس الكود ... */
+        document.body.classList.toggle("dark-mode"); const isDarkMode = document.body.classList.contains("dark-mode"); localStorage.setItem("darkMode", isDarkMode ? "yes" : "no"); const toggle = document.getElementById("darkModeToggle"); if(toggle) { toggle.textContent = isDarkMode ? "☀️ Light Mode" : "🌙 Dark Mode"; }
+    }
+
+     // --- وظيفة زر مسح المحفوظات (تم تعديلها) ---
+     function showClearWarning() {
+        // لم يعد هناك شيء لـ index.html لمسحه من localStorage بخصوص الرسائل
+        // يمكن عرض رسالة توضيحية للمستخدم
+        alert("البيانات الآن محفوظة بشكل دائم في قاعدة البيانات على السيرفر ولا يمكن مسحها من هنا.\nالتواريخ اليدوية للمشرفين لا تزال محفوظة في المتصفح ويمكن مسحها بمسح بيانات الموقع.");
+        // إذا أردت حقًا إضافة وظيفة لمسح قاعدة البيانات، يجب عمل نقطة نهاية API جديدة في app.py
+        // وتكون محمية بشكل جيد جدًا لأنها ستحذف كل شيء.
+    }
+
+  </script>
+  <!-- *** نهاية وسم السكربت الواحد *** -->
+</body>
+</html>
