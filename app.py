@@ -278,35 +278,32 @@ from sqlalchemy import desc
 
 @app.route('/get_new_messages')
 def get_new_messages():
-    global last_sent_index
-    # نحصل على آخر الرسائل حسب الترتيب
-    new_msgs = list(collection.find().sort("system_time", -1).limit(50))
-    # نحولها إلى الشكل المناسب للواجهة الأمامية
-    result = [
-    [
-        msg["system_time"].strftime("%Y-%m-%d %H:%M:%S"),
-        msg["time_sent"],
-        msg["username"],
-        msg["message"]
-    ]
-    for msg in reversed(new_msgs)
-    ]
-    return jsonify(result)
+    last_id = int(request.args.get("after", 0))
+    new_msgs = session.query(ChatMessage).filter(ChatMessage.id > last_id).order_by(ChatMessage.id).all()
+    return jsonify([
+        {
+            "id": msg.id,
+            "system_time": msg.system_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "time_sent": msg.time_sent,
+            "username": msg.username,
+            "message": msg.message
+        } for msg in new_msgs
+    ])
 
 
 # --- *** نقطة نهاية جديدة لجلب *كل* الرسائل (لصفحة السجل) *** ---
 @app.route('/get_all_messages')
 def get_all_messages():
-    all_msgs = list(collection.find().sort("system_time", -1).limit(100))
+    all_msgs = session.query(ChatMessage).all()
     return jsonify([
-    [
-        msg["system_time"].strftime("%Y-%m-%d %H:%M:%S"),
-        msg["time_sent"],
-        msg["username"],
-        msg["message"]
-    ] for msg in reversed(all_msgs)
-])
-
+        {
+            "id": msg.id,
+            "system_time": msg.system_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "time_sent": msg.time_sent,
+            "username": msg.username,
+            "message": msg.message
+        } for msg in all_msgs
+    ])
 @app.route('/submit_message', methods=['POST'])
 def submit_message():
     data = request.get_json()
