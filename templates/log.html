@@ -379,5 +379,41 @@
     row.insertCell(3).innerText = msg.message;
   }
 </script>
+    <script>
+  let latestId = null;
+
+  // تحميل أولي للرسائل عند فتح الصفحة
+  fetch('/get_all_messages')
+    .then(res => res.json())
+    .then(data => {
+      data.forEach(msg => {
+        addMessageToTable(msg);
+        latestId = msg.id;
+      });
+    });
+
+  // تحديث تلقائي للرسائل الجديدة كل ثانيتين
+  setInterval(() => {
+    if (!latestId) return;
+    fetch(`/get_new_messages?after=${latestId}`)
+      .then(res => res.json())
+      .then(newMessages => {
+        newMessages.forEach(msg => {
+          addMessageToTable(msg);
+          latestId = msg.id;
+        });
+      });
+  }, 2000);
+
+  function addMessageToTable(msg) {
+    const table = document.getElementById("messagesTable").getElementsByTagName('tbody')[0];
+    const row = table.insertRow(-1);
+    row.insertCell(0).innerText = msg.system_time;
+    row.insertCell(1).innerText = msg.time_sent;
+    row.insertCell(2).innerText = msg.username;
+    row.insertCell(3).innerText = msg.message;
+  }
+</script>
+
 </body>
 </html>
