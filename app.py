@@ -274,9 +274,9 @@ def message_log():
 # --- *** تعديل: نقطة نهاية لجلب *كل* الرسائل من MongoDB *** ---
 @app.route('/get_all_messages')
 def get_all_messages():
-    if not collection:
+    if collection is None:
+         logging.error("get_all_messages: Attempted to access when collection is None.")
          return jsonify({"error": "Database connection not available"}), 503
-
     try:
         # جلب كل الرسائل وفرزها حسب وقت النظام (الأحدث أولاً كمثال، أو الأقدم أولاً)
         # الفرز في قاعدة البيانات أفضل من الفرز في بايثون للكميات الكبيرة
@@ -302,7 +302,7 @@ def get_all_messages():
 # --- *** تعديل: نقطة نهاية للحصول على الرسائل *الجديدة* فقط من MongoDB *** ---
 @app.route('/get_new_messages')
 def get_new_messages():
-    if not collection:
+    if collection is None:
          return jsonify({"error": "Database connection not available"}), 503
 
     # *** تعديل: استقبال 'since' كطابع زمني (ISO string) ***
@@ -353,7 +353,7 @@ def get_new_messages():
 # --- نقطة نهاية Debug (اختياري) ---
 @app.route('/debug_messages')
 def debug_messages():
-    if not collection:
+    if collection is None:
          return "Database connection not available", 503
     try:
         # عرض آخر 10 رسائل محفوظة لهذه القناة
