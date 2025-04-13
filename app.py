@@ -326,6 +326,9 @@ def submit_message():
 
     return jsonify({"status": "success"})
 
+
+
+
 @app.route('/debug_messages')
 def debug_messages():
     msgs = collection.find().sort("_id", -1).limit(10)
@@ -337,8 +340,6 @@ def debug_messages():
     output += "</ul>"
     return output
 
-
-# --- تشغيل تطبيق Flask ---
 if __name__ == '__main__':
     # استخدم use_reloader=False أثناء الاختبار والتصحيح لتجنب تشغيل خيوط Selenium متعددة
     # بعد التأكد من عمل كل شيء، يمكنك إزالته إذا أردت إعادة التحميل التلقائي عند تغيير الكود
