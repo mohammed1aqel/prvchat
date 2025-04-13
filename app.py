@@ -11,8 +11,6 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 import logging
-from sqlalchemy import create_engine, Column, Integer, String, DateTime
-from sqlalchemy.orm import declarative_base, sessionmaker
 from urllib.parse import urlparse
 from pymongo import MongoClient
 
@@ -27,23 +25,10 @@ channel_name = parsed_url.path.strip("/").split("/")[1]
 db_filename = f"kick_chat_{channel_name}.db"
 
 # --- إعداد MongoDB ---
-MONGO_URI = "mongodb+srv://kickuser:<db_password>@kickchat.nxjlt79.mongodb.net/?retryWrites=true&w=majority&appName=kickchat"
+MONGO_URI = "mongodb+srv://kickuser:kickpass123@kickchat.nxjlt79.mongodb.net/?retryWrites=true&w=majority&appName=kickchat"
 client = MongoClient(MONGO_URI)
 db = client["kick_chat"]
 collection = db["messages"]
-
-# تعريف جدول الرسائل
-class ChatMessage(Base):
-    __tablename__ = 'messages'
-    id = Column(Integer, primary_key=True)
-    system_time = Column(DateTime)
-    time_sent = Column(String)
-    username = Column(String)
-    message = Column(String)
-
-# إنشاء الجداول (مرة واحدة)
-Base.metadata.create_all(engine)
-
 
 
 # --- إعداد التسجيل (Logging) ---
@@ -299,11 +284,16 @@ from sqlalchemy import desc
 def get_new_messages():
     global last_sent_index
     # نحصل على آخر الرسائل حسب الترتيب
-    new_msgs = session.query(ChatMessage).order_by(ChatMessage.id.desc()).limit(50).all()
+    new_msgs = list(collection.find().sort("system_time", -1).limit(50))
     # نحولها إلى الشكل المناسب للواجهة الأمامية
     result = [
-        [msg.system_time.strftime("%Y-%m-%d %H:%M:%S"), msg.time_sent, msg.username, msg.message]
-        for msg in reversed(new_msgs)
+    [
+        msg["system_time"].strftime("%Y-%m-%d %H:%M:%S"),
+        msg["time_sent"],
+        msg["username"],
+        msg["message"]
+    ]
+    for msg in reversed(new_msgs)
     ]
     return jsonify(result)
 
