@@ -256,10 +256,6 @@ def start_selenium():
             else:
                  break # اخرج من الحلقة إذا كان السبب هو KeyboardInterrupt
 
-# --- تشغيل Selenium في خيط منفصل ---
-thread = threading.Thread(target=start_selenium)
-thread.daemon = True # يسمح بإيقاف البرنامج الرئيسي حتى لو كان الخيط لا يزال يعمل
-thread.start()
 
 # --- نقطة نهاية Flask لعرض الواجهة الأمامية ---
 @app.route('/')
