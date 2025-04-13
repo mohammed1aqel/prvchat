@@ -69,6 +69,8 @@
          <div class="button-group">
              <a href="/" class="back-button">🔙 العودة</a>
              <button onclick="exportLogToExcel()" class="export-log-button">📁 تصدير السجل</button>
+             <!-- يمكنك إضافة زر تبديل الوضع الليلي هنا إذا أردت -->
+             <!-- <button onclick="toggleDarkMode()">🌙 تبديل الوضع</button> -->
          </div>
          <h1 style="margin-bottom: 10px;">سجل الرسائل</h1>
          <div style="min-width: 150px; text-align: left;"> <!-- مساحة فارغة للموازنة أو وضع عناصر أخرى -->
@@ -99,13 +101,23 @@
     <div id="loadingIndicator">جاري البحث عن رسائل جديدة...</div>
 
     <script>
+        // *** ASSUMPTION: Server sends data as an array of objects: ***
+        // [
+        //   { system_time: "ISO_String_Or_Comparable", time_sent: "HH:MM", username: "...", message: "..." },
+        //   ...
+        // ]
+        // *** AND `/get_new_messages` accepts a `?since=TIMESTAMP` parameter ***
+
         let logAllMessages = [];
         const botNamesLog = ['mrbeefbot', 'nightbot', 'streamelements'];
         let isFetching = false;
         let initialLoadComplete = false;
+        let latestTimestamp = null; // لتتبع آخر طابع زمني تم استلامه
+        let fetchIntervalId = null; // لتخزين معرف المؤقت
 
-        // --- دوال الفلترة والتكرار ---
+        // --- دوال مساعدة ---
         function getSystemTimeOnlyLog(dateTimeStr) {
+            // هذه الدالة تستخرج فقط HH:MM من وقت النظام للفلترة حسب الوقت
             if (!dateTimeStr) return "--:--";
             try {
                 const date = new Date(dateTimeStr);
@@ -115,27 +127,47 @@
                 return `${hours}:${minutes}`;
             } catch (e) { return "--:--"; }
         }
-         function filterByTimeLog(msg, from, to) {
+
+        function formatSystemTimeForDisplay(dateTimeStr) {
+             // دالة لعرض وقت النظام بشكل مقروء (اختياري)
+             if (!dateTimeStr) return "N/A";
+             try {
+                 const date = new Date(dateTimeStr);
+                 if (isNaN(date.getTime())) return "Invalid Date";
+                 // يمكنك تغيير التنسيق هنا حسب الحاجة
+                 return date.toLocaleString('ar-EG'); // مثال: تنسيق مصري
+             } catch (e) { return "Error"; }
+        }
+
+        function filterByTimeLog(msg, from, to) {
             if (!from && !to) return true;
-            const msgTime = getSystemTimeOnlyLog(msg[0]);
-            if (msgTime === "--:--") return true;
+            // استخدام وقت النظام للفلترة
+            const msgTime = getSystemTimeOnlyLog(msg.system_time); // <-- Accessing object property
+            if (msgTime === "--:--") return true; // تجاهل الرسائل بدون وقت صالح
             if (from && msgTime < from) return false;
             if (to && msgTime > to) return false;
             return true;
         }
-         function getMessageUniqueIdLog(msg) {
-            if (!msg || typeof msg !== 'object' || msg.length < 4) return null;
-            const systemTime = msg[0] || ''; const userName = msg[2] || 'unknown';
-            const textPart = (msg[3] || '').substring(0, 50);
+
+        function getMessageUniqueIdLog(msg) {
+            // استخدام خصائص الكائن لتوليد معرف فريد
+            if (!msg || typeof msg !== 'object') return null;
+            const systemTime = msg.system_time || '';
+            const userName = msg.username || 'unknown';
+            const textPart = (msg.message || '').substring(0, 50);
+            // يمكنك إضافة حقل ID من قاعدة البيانات إذا كان متوفرًا وموثوقًا
             return `${systemTime}_${userName}_${textPart}`;
         }
-         function deduplicateMessagesLog(messages) {
-            if(!Array.isArray(messages)) return [];
+
+        function deduplicateMessagesLog(messages) {
+            if (!Array.isArray(messages)) return [];
             const uniqueMessages = new Map();
-            messages.forEach(msg => { const id = getMessageUniqueIdLog(msg); if (id) { uniqueMessages.set(id, msg); } });
+            messages.forEach(msg => {
+                const id = getMessageUniqueIdLog(msg);
+                if (id) { uniqueMessages.set(id, msg); }
+            });
             return Array.from(uniqueMessages.values());
         }
-        // ---------------------------
 
         // --- دالة التصدير ---
         function exportLogToExcel() {
@@ -146,41 +178,43 @@
             const tableToExport = document.createElement('table');
             const thead = document.createElement('thead');
             const headerRow = document.createElement('tr');
+            // استخدام أسماء الحقول الصحيحة
             headerRow.innerHTML = `<th>وقت النظام</th><th>وقت الرسالة</th><th>المستخدم</th><th>الرسالة</th>`;
             thead.appendChild(headerRow);
             tableToExport.appendChild(thead);
 
-            // **مهم:** يجب نسخ البيانات المفلترة الحالية، وليس فقط ما هو ظاهر
+            // فلترة البيانات بناءً على logAllMessages والفلاتر الحالية
             const nameFilter = document.getElementById("logUserSearch").value.toLowerCase();
             const fromTime = document.getElementById("logFromTime").value;
             const toTime = document.getElementById("logToTime").value;
+
             const filteredData = logAllMessages.filter(msg =>
-                 (msg && msg[2] && msg[2].toLowerCase().includes(nameFilter)) &&
+                 msg && // Check if msg exists
+                 (msg.username && msg.username.toLowerCase().includes(nameFilter)) && // <-- Accessing object property
                  filterByTimeLog(msg, fromTime, toTime) &&
-                 (msg[3] !== undefined && msg[3] !== null)
+                 (msg.message !== undefined && msg.message !== null) // <-- Accessing object property
             );
 
-            // إضافة الصفوف المفلترة إلى جدول التصدير (بالترتيب الزمني الصحيح، الأقدم أولاً)
+            // إضافة الصفوف المفلترة (الأقدم أولاً في الملف)
             const tbodyExport = document.createElement('tbody');
-            filteredData.forEach(msg => { // لا نعكس الترتيب هنا
-                 const row = document.createElement('tr');
-                 row.innerHTML = `
-                    <td>${msg[0] || ''}</td>
-                    <td>${msg[1] || '--:--'}</td>
-                    <td>${msg[2] || 'Unknown'}</td>
-                    <td>${msg[3] || ''}</td>
-                `;
-                tbodyExport.appendChild(row);
-            });
+            filteredData // لا نعكس الترتيب هنا للحفاظ على الترتيب الزمني في الملف
+                .sort((a, b) => new Date(a.system_time) - new Date(b.system_time)) // فرز حسب وقت النظام تصاعدياً
+                .forEach(msg => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${formatSystemTimeForDisplay(msg.system_time) || ''}</td>
+                        <td>${msg.time_sent || '--:--'}</td>
+                        <td>${msg.username || 'Unknown'}</td>
+                        <td>${msg.message || ''}</td>
+                    `;
+                    tbodyExport.appendChild(row);
+                });
             tableToExport.appendChild(tbodyExport);
 
-
             const wb = XLSX.utils.table_to_book(tableToExport, { sheet: "ChatLog" });
-            // اسم ملف ديناميكي مع تاريخ (اختياري)
             const dateStr = new Date().toISOString().slice(0, 10);
             XLSX.writeFile(wb, `kick_chat_log_${dateStr}.xlsx`);
         }
-        // --------------------
 
         // --- دالة عرض الجدول ---
         function renderLogTable() {
@@ -192,35 +226,45 @@
             const fromTime = document.getElementById("logFromTime").value;
             const toTime = document.getElementById("logToTime").value;
 
+            // فلترة logAllMessages بناءً على الفلاتر
             const filteredData = logAllMessages.filter(msg =>
-                 (msg && msg[2] && msg[2].toLowerCase().includes(nameFilter)) &&
+                 msg &&
+                 (msg.username && msg.username.toLowerCase().includes(nameFilter)) && // <-- Accessing object property
                  filterByTimeLog(msg, fromTime, toTime) &&
-                 (msg[3] !== undefined && msg[3] !== null)
+                 (msg.message !== undefined && msg.message !== null) // <-- Accessing object property
             );
 
-            tableBody.innerHTML = '';
+            tableBody.innerHTML = ''; // مسح الجدول قبل إعادة الرسم
 
             if (filteredData.length === 0 && initialLoadComplete) {
                 tableBody.innerHTML = '<tr><td colspan="4">لا توجد رسائل تطابق البحث.</td></tr>';
             } else if (filteredData.length === 0 && !initialLoadComplete) {
                  tableBody.innerHTML = '<tr><td colspan="4">جاري تحميل الرسائل...</td></tr>';
             } else {
-                // عرض الرسائل (الأحدث في الأعلى)
-                filteredData.slice().reverse().forEach(msg => {
-                    const isBot = botNamesLog.includes(msg[2]?.toLowerCase() || '');
+                // عرض الرسائل (الأحدث في الأعلى في العرض)
+                // فرز البيانات للعرض (الأحدث أولاً) - نسخة مفروزة للعرض فقط
+                const sortedForDisplay = filteredData.slice().sort((a, b) => {
+                     // فرز تنازلي حسب وقت النظام
+                     const dateA = new Date(a.system_time || 0);
+                     const dateB = new Date(b.system_time || 0);
+                     return dateB - dateA;
+                });
+
+                sortedForDisplay.forEach(msg => {
+                    const isBot = botNamesLog.includes(msg.username?.toLowerCase() || ''); // <-- Accessing object property
                     const row = document.createElement('tr');
                     row.className = isBot ? 'bot-message' : '';
                     row.innerHTML = `
-                        <td class="timestamp">${msg[0] || ''}</td>
-                        <td class="timestamp">${msg[1] || '--:--'}</td>
-                        <td class="username">${msg[2] || 'Unknown'}</td>
-                        <td class="message">${msg[3] || ''}</td>
+                        <td class="timestamp">${formatSystemTimeForDisplay(msg.system_time) || ''}</td>
+                        <td class="timestamp">${msg.time_sent || '--:--'}</td>
+                        <td class="username">${msg.username || 'Unknown'}</td>
+                        <td class="message">${msg.message || ''}</td>
                     `;
                     tableBody.appendChild(row);
                 });
             }
-            // تحديث عدد الرسائل المعروضة
-            countSpan.textContent = `(${filteredData.length}) رسالة`;
+            // تحديث عدد الرسائل المعروضة/الإجمالي
+            countSpan.textContent = `(${filteredData.length} / ${logAllMessages.length}) رسالة`;
         }
 
         // --- دالة جلب الرسائل الجديدة ---
@@ -231,123 +275,146 @@
             const loadingIndicator = document.getElementById('loadingIndicator');
             if(loadingIndicator) loadingIndicator.style.display = 'block';
 
-            fetch('/get_new_messages')
-                .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); })
+            // **تعديل: إرسال آخر طابع زمني للخادم**
+            const fetchUrl = `/get_new_messages${latestTimestamp ? '?since=' + encodeURIComponent(latestTimestamp) : ''}`;
+            console.log("Fetching new messages from:", fetchUrl); // للتصحيح
+
+            fetch(fetchUrl)
+                .then(res => {
+                    if (!res.ok) {
+                         // عرض خطأ أكثر تفصيلاً
+                         return res.text().then(text => { throw new Error(`HTTP ${res.status}: ${text || res.statusText}`) });
+                    }
+                    // تحقق إذا كانت الاستجابة فارغة (مثل 204 No Content) قبل محاولة تحليل JSON
+                    if (res.status === 204) {
+                       return []; // لا يوجد محتوى جديد، أرجع مصفوفة فارغة
+                    }
+                    return res.json();
+                })
                 .then(newMessages => {
                     if (newMessages && Array.isArray(newMessages) && newMessages.length > 0) {
+                        console.log(`Received ${newMessages.length} new messages.`); // للتصحيح
+
+                        // دمج وإزالة التكرار
                         const combined = logAllMessages.concat(newMessages);
                         const uniqueCombined = deduplicateMessagesLog(combined);
 
                         if (uniqueCombined.length > logAllMessages.length) {
                             logAllMessages = uniqueCombined;
-                            // **فقط أعد الرسم إذا لم يكن المستخدم يقوم بالفلترة حاليًا**
-                            // هذا يمنع قفز الجدول أثناء الكتابة في حقول الفلترة
+
+                            // تحديث آخر طابع زمني بناءً على الرسائل الجديدة المستلمة
+                            const newLatest = newMessages.reduce((latest, msg) => {
+                                const msgTime = msg.system_time;
+                                return msgTime && (!latest || msgTime > latest) ? msgTime : latest;
+                            }, latestTimestamp); // ابدأ بالموجود بالفعل
+
+                            if (newLatest > latestTimestamp) {
+                                latestTimestamp = newLatest;
+                                console.log("Updated latestTimestamp:", latestTimestamp); // للتصحيح
+                            }
+
+                            // إعادة الرسم فقط إذا لم تكن الفلاتر نشطة لتجنب القفز
                             const userSearchActive = document.getElementById("logUserSearch")?.value?.length > 0;
                             const fromTimeActive = document.getElementById("logFromTime")?.value?.length > 0;
                             const toTimeActive = document.getElementById("logToTime")?.value?.length > 0;
+
                             if (!userSearchActive && !fromTimeActive && !toTimeActive) {
                                  renderLogTable(); // أعد الرسم بالكامل
                             } else {
-                                 // فقط حدث عدد الرسائل الإجمالي (اختياري)
+                                 // حدث عدد الرسائل فقط
                                  const countSpan = document.getElementById("messageCountLog");
-                                 if(countSpan) countSpan.textContent = `(${uniqueCombined.length}) رسالة (قد تختلف عن المعروض بسبب الفلترة)`;
+                                 if (countSpan) countSpan.textContent = `(${document.getElementById("messages_table_log").rows.length} / ${logAllMessages.length}) رسالة (مرشحة)`;
                                  console.log("New messages arrived, but filtering is active. Table not fully re-rendered.");
                             }
+                        } else {
+                             console.log("No genuinely new unique messages after deduplication."); // للتصحيح
                         }
+                    } else {
+                         console.log("No new messages received or empty array."); // للتصحيح
                     }
                 })
-                .catch(error => console.error("Error fetching new messages:", error))
-                .finally(() => { if(loadingIndicator) loadingIndicator.style.display = 'none'; isFetching = false; });
+                .catch(error => console.error("Error fetching new messages:", error)) // إظهار الخطأ
+                .finally(() => {
+                    if(loadingIndicator) loadingIndicator.style.display = 'none';
+                    isFetching = false;
+                 });
         }
 
         // --- عند تحميل الصفحة ---
         document.addEventListener('DOMContentLoaded', () => {
-            // استعادة الوضع الليلي من localStorage
-             if (localStorage.getItem("darkMode") === "yes") { document.body.classList.add("dark-mode"); }
+            // استعادة الوضع الليلي
+            if (localStorage.getItem("darkMode") === "yes") { document.body.classList.add("dark-mode"); }
 
             console.log("Starting initial fetch for all messages...");
             fetch('/get_all_messages')
-                .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); })
+                .then(res => {
+                    if (!res.ok) {
+                         return res.text().then(text => { throw new Error(`HTTP ${res.status}: ${text || res.statusText}`) });
+                    }
+                     // تحقق من نوع المحتوى قبل التحليل
+                     const contentType = res.headers.get("content-type");
+                     if (contentType && contentType.indexOf("application/json") !== -1) {
+                         return res.json();
+                     } else {
+                         // إذا لم يكن JSON، ربما يكون خطأ في الخادم أو صفحة HTML
+                         throw new Error('Received non-JSON response from /get_all_messages');
+                     }
+                })
                 .then(data => {
-                    logAllMessages = Array.isArray(data) ? deduplicateMessagesLog(data) : [];
+                    if (!Array.isArray(data)) {
+                        console.error("Initial data is not an array:", data);
+                        throw new Error("Invalid data format received from server.");
+                    }
+                    logAllMessages = deduplicateMessagesLog(data); // تنظيف البيانات الأولية
+
+                    // تحديد آخر طابع زمني من البيانات الأولية
+                    latestTimestamp = logAllMessages.reduce((latest, msg) => {
+                         const msgTime = msg.system_time;
+                         // تأكد من أن msgTime موجود وأكبر من الـ latest الحالي
+                         return msgTime && (!latest || msgTime > latest) ? msgTime : latest;
+                     }, null); // ابدأ بـ null
+                    console.log("Initial latestTimestamp:", latestTimestamp); // للتصحيح
+
                     initialLoadComplete = true;
                     renderLogTable(); // عرض الجدول الأولي
 
-                    // ربط الأحداث بالفلاتر بعد التحميل الأولي
+                    // ربط الأحداث بالفلاتر بعد التحميل الأولي والناجح
                     const userSearch = document.getElementById("logUserSearch");
                     const fromInput = document.getElementById("logFromTime");
                     const toInput = document.getElementById("logToTime");
-                    // إعادة الرسم عند تغيير أي فلتر
+
                     if(userSearch) userSearch.addEventListener("input", renderLogTable);
                     if(fromInput) fromInput.addEventListener("input", renderLogTable);
                     if(toInput) toInput.addEventListener("input", renderLogTable);
 
-                    // بدء الجلب الدوري للرسائل الجديدة
+                    // بدء الجلب الدوري للرسائل الجديدة فقط بعد التحميل الأولي الناجح
                     console.log("Starting periodic fetching for new messages...");
-                    // *** تعديل الفاصل الزمني إلى 0.5 ثانية ***
-                    setInterval(fetchNewLogMessages, 500); // 500 مللي ثانية
-                    // ****************************************
+                    // إيقاف المؤقت القديم إذا كان موجودًا قبل بدء واحد جديد
+                    if (fetchIntervalId) clearInterval(fetchIntervalId);
+                    fetchIntervalId = setInterval(fetchNewLogMessages, 1000); // تقليل الفاصل الزمني إلى ثانية واحدة كمثال
+
                 })
                 .catch(error => {
-                    console.error("Fatal error during initial load:", error);
+                    console.error("Fatal error during initial load:", error); // إظهار الخطأ
                     const tableBody = document.getElementById("messages_table_log");
                     const countSpan = document.getElementById("messageCountLog");
-                    if(tableBody) tableBody.innerHTML = '<tr><td colspan="4">خطأ فادح في تحميل السجل.</td></tr>';
+                    if(tableBody) tableBody.innerHTML = `<tr><td colspan="4">خطأ فادح في تحميل السجل: ${error.message}. تحقق من سجلات الخادم ووحدة التحكم.</td></tr>`;
                     if(countSpan) countSpan.textContent = 'خطأ';
-                    initialLoadComplete = true; // السماح بمحاولات الجلب الدورية
-                    // بدء الجلب الدوري حتى لو فشل التحميل الأولي
-                    console.log("Starting periodic fetching despite error...");
-                    // *** تعديل الفاصل الزمني إلى 0.5 ثانية ***
-                    setInterval(fetchNewLogMessages, 500); // 500 مللي ثانية
-                    // ****************************************
+                    // لا تبدأ الجلب الدوري إذا فشل التحميل الأولي بشكل فادح
+                    // initialLoadComplete = true; // يمكن تركها false لمنع محاولات الجلب الفاشلة
                 });
         });
-         // دالة تبديل الوضع الليلي (يمكن نسخها من index.html)
-         function toggleDarkMode() {
+
+        // --- دالة تبديل الوضع الليلي ---
+        function toggleDarkMode() {
              document.body.classList.toggle("dark-mode");
              const isDarkMode = document.body.classList.contains("dark-mode");
              localStorage.setItem("darkMode", isDarkMode ? "yes" : "no");
-             // يمكنك إضافة تحديث لنص زر التبديل إذا كان لديك واحد هنا
-         }
-         
+        }
+
     </script>
 
-    <script>
-  let latestId = null;
-
-  // تحميل الرسائل القديمة عند فتح الصفحة
-  fetch('/get_all_messages')
-    .then(res => res.json())
-    .then(data => {
-      data.forEach(msg => {
-        addMessageToTable(msg);
-        latestId = msg.id;
-      });
-    });
-
-  // تحديث تلقائي للرسائل الجديدة
-  setInterval(() => {
-    if (!latestId) return;
-    fetch(`/get_new_messages?after=${latestId}`)
-      .then(res => res.json())
-      .then(newMessages => {
-        newMessages.forEach(msg => {
-          addMessageToTable(msg);
-          latestId = msg.id;
-        });
-      });
-  }, 2000);
-
-  function addMessageToTable(msg) {
-    const table = document.getElementById("messagesTableLog").getElementsByTagName('tbody')[0];
-    const row = table.insertRow(-1);
-    row.insertCell(0).innerText = msg.system_time;
-    row.insertCell(1).innerText = msg.time_sent;
-    row.insertCell(2).innerText = msg.username;
-    row.insertCell(3).innerText = msg.message;
-  }
-</script>
-
+    <!-- تم حذف كتلة السكريبت الثانية بالكامل -->
 
 </body>
 </html>
