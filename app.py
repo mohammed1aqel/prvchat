@@ -304,6 +304,29 @@ def get_all_messages():
     all_msgs = session.query(ChatMessage).all()
     return jsonify([[msg.system_time.strftime("%Y-%m-%d %H:%M:%S"), msg.time_sent, msg.username, msg.message] for msg in all_msgs])
 
+@app.route('/submit_message', methods=['POST'])
+def submit_message():
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"status": "error", "message": "No data received"}), 400
+
+    # تأكد من وجود الحقول المطلوبة
+    required_fields = ['time_sent', 'username', 'message']
+    if not all(field in data for field in required_fields):
+        return jsonify({"status": "error", "message": "Missing fields"}), 400
+
+    # إنشاء الرسالة وتخزينها
+    msg = ChatMessage(
+        system_time=datetime.now(),
+        time_sent=data['time_sent'],
+        username=data['username'],
+        message=data['message']
+    )
+    session.add(msg)
+    session.commit()
+
+    return jsonify({"status": "success"})
 
 # --- تشغيل تطبيق Flask ---
 if __name__ == '__main__':
