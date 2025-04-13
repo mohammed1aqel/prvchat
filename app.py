@@ -326,6 +326,18 @@ def submit_message():
 
     return jsonify({"status": "success"})
 
+@app.route('/debug_messages')
+def debug_messages():
+    msgs = collection.find().sort("_id", -1).limit(10)
+    output = "<h2>آخر 10 رسائل من MongoDB:</h2><ul>"
+    for msg in msgs:
+        username = msg.get("username", "مجهول")
+        message = msg.get("message", "")
+        output += f"<li><b>{username}</b>: {message}</li>"
+    output += "</ul>"
+    return output
+
+
 # --- تشغيل تطبيق Flask ---
 if __name__ == '__main__':
     # استخدم use_reloader=False أثناء الاختبار والتصحيح لتجنب تشغيل خيوط Selenium متعددة
