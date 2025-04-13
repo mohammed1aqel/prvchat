@@ -309,80 +309,13 @@
              localStorage.setItem("darkMode", isDarkMode ? "yes" : "no");
              // يمكنك إضافة تحديث لنص زر التبديل إذا كان لديك واحد هنا
          }
-            let latestId = 0;
-
-            // تحميل الرسائل القديمة عند أول تحميل للصفحة
-            fetch('/get_all_messages')
-                .then(res => res.json())
-                .then(data => {
-                data.forEach(msg => {
-                    addMessageToTable(msg);
-                    if (msg.id > latestId) latestId = msg.id;
-                });
-                });
-
-            // تحديث الرسائل الجديدة كل ثانيتين
-            setInterval(() => {
-                fetch(`/get_new_messages?after=${latestId}`)
-                .then(res => res.json())
-                .then(newMessages => {
-                    newMessages.forEach(msg => {
-                    addMessageToTable(msg);
-                    if (msg.id > latestId) latestId = msg.id;
-                    });
-                });
-            }, 2000);
-
-            // دالة لإضافة صف جديد للجدول
-            function addMessageToTable(msg) {
-                const table = document.getElementById("messagesTable").getElementsByTagName('tbody')[0];
-                const row = table.insertRow(-1);
-
-                row.insertCell(0).innerText = msg.system_time;
-                row.insertCell(1).innerText = msg.time_sent;
-                row.insertCell(2).innerText = msg.username;
-                row.insertCell(3).innerText = msg.message;
-            }
+         
     </script>
-    <script>
-  let latestId = 0;
 
-  // تحميل الرسائل القديمة عند بداية الصفحة
-  fetch('/get_all_messages')
-    .then(res => res.json())
-    .then(data => {
-      data.forEach(msg => {
-        addMessageToTable(msg);
-        if (msg.id > latestId) latestId = msg.id;
-      });
-    });
-
-  // تحديث الرسائل الجديدة كل ثانيتين
-  setInterval(() => {
-    fetch(`/get_new_messages?after=${latestId}`)
-      .then(res => res.json())
-      .then(newMessages => {
-        newMessages.forEach(msg => {
-          addMessageToTable(msg);
-          if (msg.id > latestId) latestId = msg.id;
-        });
-      });
-  }, 2000);
-
-  // دالة لإضافة صف جديد للجدول
-  function addMessageToTable(msg) {
-    const table = document.getElementById("messagesTable").getElementsByTagName('tbody')[0];
-    const row = table.insertRow(-1);
-    row.insertCell(0).innerText = msg.system_time;
-    row.insertCell(1).innerText = msg.time_sent;
-    row.insertCell(2).innerText = msg.username;
-    row.insertCell(3).innerText = msg.message;
-  }
-</script>
     <script>
   let latestId = null;
 
-  // تحميل أولي للرسائل عند فتح الصفحة
+  // تحميل الرسائل القديمة عند فتح الصفحة
   fetch('/get_all_messages')
     .then(res => res.json())
     .then(data => {
@@ -392,7 +325,7 @@
       });
     });
 
-  // تحديث تلقائي للرسائل الجديدة كل ثانيتين
+  // تحديث تلقائي للرسائل الجديدة
   setInterval(() => {
     if (!latestId) return;
     fetch(`/get_new_messages?after=${latestId}`)
@@ -406,7 +339,7 @@
   }, 2000);
 
   function addMessageToTable(msg) {
-    const table = document.getElementById("messagesTable").getElementsByTagName('tbody')[0];
+    const table = document.getElementById("messagesTableLog").getElementsByTagName('tbody')[0];
     const row = table.insertRow(-1);
     row.insertCell(0).innerText = msg.system_time;
     row.insertCell(1).innerText = msg.time_sent;
@@ -414,6 +347,7 @@
     row.insertCell(3).innerText = msg.message;
   }
 </script>
+
 
 </body>
 </html>
