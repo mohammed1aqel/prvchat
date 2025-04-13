@@ -8,11 +8,13 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 from datetime import datetime
+import requests
 from bs4 import BeautifulSoup
 import logging
 from sqlalchemy import create_engine, Column, Integer, String, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 from urllib.parse import urlparse
+from pymongo import MongoClient
 
 # ✅ رابط الشات للقناة
 chat_url = "https://kick.com/popout/maherco/chat"
@@ -24,11 +26,11 @@ channel_name = parsed_url.path.strip("/").split("/")[1]
 # ✅ توليد اسم قاعدة البيانات
 db_filename = f"kick_chat_{channel_name}.db"
 
-# ✅ إنشاء قاعدة البيانات
-Base = declarative_base()
-engine = create_engine(f'sqlite:///{db_filename}', echo=False)
-Session = sessionmaker(bind=engine)
-session = Session()
+# --- إعداد MongoDB ---
+MONGO_URI = "mongodb+srv://kickuser:<db_password>@kickchat.nxjlt79.mongodb.net/?retryWrites=true&w=majority&appName=kickchat"
+client = MongoClient(MONGO_URI)
+db = client["kick_chat"]
+collection = db["messages"]
 
 # تعريف جدول الرسائل
 class ChatMessage(Base):
@@ -207,17 +209,25 @@ def start_selenium():
                             # --- إضافة الرسالة إذا لم تتم معالجتها من قبل ---
                             if unique_id not in processed_messages:
                                 from datetime import datetime as dt
-                                msg_obj = ChatMessage(
-                                    system_time=dt.strptime(system_time, "%Y-%m-%d %H:%M:%S"),
-                                    time_sent=time_sent,
-                                    username=user_name,
-                                    message=message_text_cleaned
-                                )
-                                session.add(msg_obj)
-                                session.commit()
-                                processed_messages.add(unique_id)
+                                try:
+                                    response = requests.post(
+                                        "https://kick-chat-dashboard.onrender.com/submit_message",
+                                        json={
+                                            "time_sent": time_sent,
+                                            "username": user_name,
+                                            "message": message_text_cleaned
+                                        },
+                                        timeout=5
+                                    )
 
-                                new_messages_found_this_cycle += 1
+                                    if response.status_code == 200:
+                                        processed_messages.add(unique_id)
+                                        new_messages_found_this_cycle += 1
+                                    else:
+                                        logging.warning(f"⚠️ فشل إرسال الرسالة إلى السيرفر. الكود: {response.status_code}, الرد: {response.text}")
+
+                                except Exception as ex:
+                                    logging.error(f"❌ خطأ أثناء محاولة إرسال الرسالة إلى السيرفر: {ex}")
 
                         except StaleElementReferenceException:
                             logging.warning(" عنصر قديم (StaleElementReferenceException)، سيتم تجاهله والمتابعة.")
@@ -301,8 +311,15 @@ def get_new_messages():
 # --- *** نقطة نهاية جديدة لجلب *كل* الرسائل (لصفحة السجل) *** ---
 @app.route('/get_all_messages')
 def get_all_messages():
-    all_msgs = session.query(ChatMessage).all()
-    return jsonify([[msg.system_time.strftime("%Y-%m-%d %H:%M:%S"), msg.time_sent, msg.username, msg.message] for msg in all_msgs])
+    all_msgs = list(collection.find().sort("system_time", -1).limit(100))
+    return jsonify([
+    [
+        msg["system_time"].strftime("%Y-%m-%d %H:%M:%S"),
+        msg["time_sent"],
+        msg["username"],
+        msg["message"]
+    ] for msg in reversed(all_msgs)
+])
 
 @app.route('/submit_message', methods=['POST'])
 def submit_message():
@@ -317,14 +334,12 @@ def submit_message():
         return jsonify({"status": "error", "message": "Missing fields"}), 400
 
     # إنشاء الرسالة وتخزينها
-    msg = ChatMessage(
-        system_time=datetime.now(),
-        time_sent=data['time_sent'],
-        username=data['username'],
-        message=data['message']
-    )
-    session.add(msg)
-    session.commit()
+    collection.insert_one({
+    "system_time": datetime.now(),
+    "time_sent": data['time_sent'],
+    "username": data['username'],
+    "message": data['message']
+})
 
     return jsonify({"status": "success"})
 
